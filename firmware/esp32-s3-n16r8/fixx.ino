@@ -80,6 +80,10 @@ const unsigned long RFID_READ_INTERVAL = 2000;
 unsigned long lastMQTTReconnect = 0;
 const unsigned long MQTT_RECONNECT_INTERVAL = 5000;
 
+// Tambahan untuk menangani timeout
+const unsigned long RESULT_TIMEOUT = 15000;  // 15 detik timeout
+bool resultReceived = false;
+
 // ================================================================
 // 5. WIFI FUNCTIONS
 // ================================================================
@@ -130,6 +134,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.println(message);
 
   if (String(topic) == MQTT_TOPIC_RESULT) {
+    resultReceived = true;
+    waitingForResult = false;
+    
     // Parse hasil dari backend
     if (message.indexOf("SUCCESS") > 0) {
       // Extract nama
@@ -141,7 +148,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     } else if (message.indexOf("FAILED") > 0) {
       aksesDitolak();
     }
-    waitingForResult = false;
   }
 }
 
@@ -267,18 +273,26 @@ void aksesDitolak() {
 }
 
 void resetToIdle() {
+  // Matikan semua indikator
   digitalWrite(LED_RED, LOW);
   digitalWrite(LED_GREEN, LOW);
   digitalWrite(BUZZER_PIN, LOW);
   
+  // Reset status
+  waitingForResult = false;
+  resultReceived = false;
+  currentUID = "";
+  lastUID = "";
+  
+  // Tampilkan pesan idle di LCD
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Silakan Tempel");
   lcd.setCursor(0, 1);
   lcd.print("Kartu RFID Anda");
   
-  waitingForResult = false;
-  currentUID = "";
+  Serial.println("\n🔄 Sistem kembali ke mode IDLE");
+  Serial.println("💡 Silakan tempel kartu RFID berikutnya\n");
 }
 
 void beepOnce() {
@@ -378,7 +392,7 @@ void loop() {
   
   // Jika menunggu hasil, cek timeout
   if (waitingForResult) {
-    if (millis() - waitStartTime > 30000) {  // 30 detik timeout
+    if (millis() - waitStartTime > RESULT_TIMEOUT) {
       Serial.println("⏰ Timeout menunggu hasil!");
       lcd.clear();
       lcd.setCursor(0, 0);
@@ -431,6 +445,7 @@ void loop() {
       beepOnce();
       
       waitingForResult = true;
+      resultReceived = false;
       waitStartTime = millis();
       
     } else {
